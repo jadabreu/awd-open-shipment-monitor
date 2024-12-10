@@ -169,7 +169,7 @@ def main():
     
     # Add report download instructions
     st.markdown("""
-    ### To make the shipment analysis you need to download the AWD to FBA report. How to get the AWD Report:
+    ### To make the shipment analysis you need to download the AWD to FBA report. Here is how to get the Report:
     1. Go to [Amazon Seller Central Inventory](https://sellercentral.amazon.com/fba-inventory/gim/inventory-list)
     2. Click on the arrow next to "AWD Report"
     3. Select "Download Shipment Details"
