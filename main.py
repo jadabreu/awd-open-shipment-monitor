@@ -176,7 +176,7 @@ def main():
     """)
     
     # File uploader
-    uploaded_file = st.file_uploader("Upload your Amazon shipments report (CSV/Excel)", type=['csv', 'xlsx'])
+    uploaded_file = st.file_uploader("Upload your Amazon shipments report (Excel File) here:", type=['csv', 'xlsx'])
     
     if uploaded_file is not None:
         # Read file based on extension
