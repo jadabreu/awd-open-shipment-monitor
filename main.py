@@ -165,11 +165,11 @@ def create_monthly_reception_progress(df, two_months_ago_start, two_months_ago_e
     return fig
 
 def main():
-    st.title("AWD to FC Analysis")
+    st.title("AWD to FBA Shipment Analysis")
     
     # Add report download instructions
     st.markdown("""
-    ### How to get the AWD Report:
+    ### To make the shipment analysis you need to download the AWD to FBA report. How to get the AWD Report:
     1. Go to [Amazon Seller Central Inventory](https://sellercentral.amazon.com/fba-inventory/gim/inventory-list)
     2. Click on the arrow next to "AWD Report"
     3. Select "Download Shipment Details"
