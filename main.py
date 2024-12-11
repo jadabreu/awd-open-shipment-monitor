@@ -3,10 +3,18 @@ import pandas as pd
 from datetime import datetime
 import io
 
+# Initialize session state
+if 'debug_output' not in st.session_state:
+    st.session_state.debug_output = []
+
+def add_debug(message):
+    """Add debug message to session state"""
+    st.session_state.debug_output.append(message)
+
 def calculate_metrics(df, start_date, end_date):
     """Calculate metrics for a given date range"""
     # Filter data for the period
-    mask = (df['Created  date'] >= start_date) & (df['Created  date'] < end_date)
+    mask = (df['Created  date'] >= start_date) & (df['Created  date'] <= end_date)
     period_df = df[mask].copy()
     
     # Skip if no data for this period
@@ -63,6 +71,16 @@ def format_number(value):
         return f"{value:,}"
     return value
 
+def get_month_start_end(date):
+    """Get the start and end dates for a given month"""
+    start_date = date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start_date.month == 12:
+        end_date = start_date.replace(year=start_date.year + 1, month=1, day=1)
+    else:
+        end_date = start_date.replace(month=start_date.month + 1, day=1)
+    end_date = end_date - pd.Timedelta(microseconds=1)  # Last microsecond of the last day
+    return start_date, end_date
+
 def main():
     st.title("AWD to FBA Shipment Stats")
     
@@ -73,6 +91,8 @@ def main():
     2. Click on the arrow next to "AWD Report"
     3. Select "Download Shipment Details"
     """)
+    
+    
     
     # File uploader
     uploaded_file = st.file_uploader("Upload your Amazon shipments report (Excel File) here:", type=['csv', 'xlsx'])
@@ -87,21 +107,29 @@ def main():
         # Convert date column to datetime
         df['Created  date'] = pd.to_datetime(df['Created  date'])
         
-        # Calculate date ranges
+        # Calculate date ranges with proper time components
         today = datetime.now()
-        current_month = today.replace(day=1)
-        last_month = (current_month.replace(day=1) - pd.DateOffset(days=1)).replace(day=1)
-        two_months_ago = (last_month.replace(day=1) - pd.DateOffset(days=1)).replace(day=1)
         
-        # Calculate next month starts for ranges
-        current_month_end = (current_month + pd.DateOffset(months=1))
-        last_month_end = current_month
-        two_months_ago_end = last_month
+        # Current month
+        current_month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if current_month_start.month == 12:
+            next_month = current_month_start.replace(year=current_month_start.year + 1, month=1)
+        else:
+            next_month = current_month_start.replace(month=current_month_start.month + 1)
+        current_month_end = next_month - pd.Timedelta(microseconds=1)  # Last microsecond of the current month
+        
+        # Last month
+        last_month_start = (current_month_start - pd.DateOffset(months=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        last_month_end = current_month_start - pd.Timedelta(microseconds=1)  # Last microsecond of last month
+        
+        # Two months ago
+        two_months_ago_start = (current_month_start - pd.DateOffset(months=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+        two_months_ago_end = last_month_start - pd.Timedelta(microseconds=1)  # Last microsecond of two months ago
         
         # Calculate metrics for each period
-        metrics_two_months_ago = calculate_metrics(df, two_months_ago, two_months_ago_end)
-        metrics_last_month = calculate_metrics(df, last_month, last_month_end)
-        metrics_current_month = calculate_metrics(df, current_month, current_month_end)
+        metrics_two_months_ago = calculate_metrics(df, two_months_ago_start, two_months_ago_end)
+        metrics_last_month = calculate_metrics(df, last_month_start, last_month_end)
+        metrics_current_month = calculate_metrics(df, current_month_start, current_month_end)
         
         # Calculate total non-received units for subtitle
         total_not_received = (metrics_two_months_ago['units_not_received_os'] + 
@@ -112,6 +140,10 @@ def main():
         
         # Display table title
         st.markdown("### AWD to FBA Shipment Stats")
+         # Add classification note
+        st.markdown("""
+        *Note: shipments where units received ≥ units sent are classified as closed, even when the status is not 'Closed' yet.*
+        """)
         
         # Create display table data (formatted for Streamlit display)
         display_data = {
@@ -123,51 +155,51 @@ def main():
                 'Units Received from OS',
                 'Units Not Received from OS'
             ],
-            f"{two_months_ago.strftime('%B')}": [
-                '',  # Total Units Sent (only for last month)
-                '',  # Total Units Received (only for last month)
+            f"{two_months_ago_start.strftime('%B')}": [  # October
+                '',  # Total Units Sent (only for November)
+                '',  # Total Units Received (only for November)
                 str(metrics_two_months_ago['open_shipments']),
                 format_number(metrics_two_months_ago['total_units_in_os']),
                 format_number(metrics_two_months_ago['units_received_os']),
                 format_number(metrics_two_months_ago['units_not_received_os'])
             ],
             '%': [
-                '',  # No data for this month
-                '',  # No data for this month
+                '',  # No percentage for total units
+                '',  # No percentage for total units
                 '',  # No percentage for open shipments count
-                format_percentage(metrics_two_months_ago['total_units_in_os'], 1, True),
+                format_percentage(metrics_two_months_ago['total_units_in_os'], metrics_two_months_ago['total_units_sent']),
                 format_percentage(metrics_two_months_ago['units_received_os'], metrics_two_months_ago['total_units_in_os']),
                 format_percentage(metrics_two_months_ago['units_not_received_os'], metrics_two_months_ago['total_units_in_os'])
             ],
-            f"{last_month.strftime('%B')}": [
-                format_number(metrics_last_month['total_units_sent']),
-                format_number(metrics_last_month['total_units_received']),
+            f"{last_month_start.strftime('%B')}": [  # November
+                format_number(metrics_last_month['total_units_sent']),  # Only month showing total units
+                format_number(metrics_last_month['total_units_received']),  # Only month showing total units
                 str(metrics_last_month['open_shipments']),
                 format_number(metrics_last_month['total_units_in_os']),
                 format_number(metrics_last_month['units_received_os']),
                 format_number(metrics_last_month['units_not_received_os'])
             ],
             '% ': [  # Note the space to make the column name unique
-                '100.0%',  # Always 100% when data exists
+                '100.0%',  # Total units sent is 100%
                 format_percentage(metrics_last_month['total_units_received'], metrics_last_month['total_units_sent']),
                 '',  # No percentage for open shipments count
-                format_percentage(metrics_last_month['total_units_in_os'], 1, True),
+                format_percentage(metrics_last_month['total_units_in_os'], metrics_last_month['total_units_sent']),
                 format_percentage(metrics_last_month['units_received_os'], metrics_last_month['total_units_in_os']),
                 format_percentage(metrics_last_month['units_not_received_os'], metrics_last_month['total_units_in_os'])
             ],
-            f"{current_month.strftime('%B')}": [
-                '',  # Total Units Sent (only for last month)
-                '',  # Total Units Received (only for last month)
+            f"{current_month_start.strftime('%B')}": [  # December
+                '',  # Total Units Sent (only for November)
+                '',  # Total Units Received (only for November)
                 str(metrics_current_month['open_shipments']),
                 format_number(metrics_current_month['total_units_in_os']),
                 format_number(metrics_current_month['units_received_os']),
                 format_number(metrics_current_month['units_not_received_os'])
             ],
             '%  ': [  # Note the two spaces to make the column name unique
-                '',  # No data for this month
-                '',  # No data for this month
+                '',  # No percentage for total units
+                '',  # No percentage for total units
                 '',  # No percentage for open shipments count
-                format_percentage(metrics_current_month['total_units_in_os'], 1, True),
+                format_percentage(metrics_current_month['total_units_in_os'], metrics_current_month['total_units_sent']),
                 format_percentage(metrics_current_month['units_received_os'], metrics_current_month['total_units_in_os']),
                 format_percentage(metrics_current_month['units_not_received_os'], metrics_current_month['total_units_in_os'])
             ]
@@ -176,7 +208,7 @@ def main():
         # Create export table data (raw numbers for Excel)
         export_data = {
             'Metric': display_data['Metric'],
-            f"{two_months_ago.strftime('%B')}": [
+            f"{two_months_ago_start.strftime('%B')}": [
                 '',  # Total Units Sent (only for last month)
                 '',  # Total Units Received (only for last month)
                 metrics_two_months_ago['open_shipments'],
@@ -192,7 +224,7 @@ def main():
                 (metrics_two_months_ago['units_received_os'] / metrics_two_months_ago['total_units_in_os']) if metrics_two_months_ago['total_units_in_os'] > 0 else '',
                 (metrics_two_months_ago['units_not_received_os'] / metrics_two_months_ago['total_units_in_os']) if metrics_two_months_ago['total_units_in_os'] > 0 else ''
             ],
-            f"{last_month.strftime('%B')}": [
+            f"{last_month_start.strftime('%B')}": [
                 metrics_last_month['total_units_sent'],
                 metrics_last_month['total_units_received'],
                 metrics_last_month['open_shipments'],
@@ -208,7 +240,7 @@ def main():
                 (metrics_last_month['units_received_os'] / metrics_last_month['total_units_in_os']) if metrics_last_month['total_units_in_os'] > 0 else '',
                 (metrics_last_month['units_not_received_os'] / metrics_last_month['total_units_in_os']) if metrics_last_month['total_units_in_os'] > 0 else ''
             ],
-            f"{current_month.strftime('%B')}": [
+            f"{current_month_start.strftime('%B')}": [
                 '',  # Total Units Sent (only for last month)
                 '',  # Total Units Received (only for last month)
                 metrics_current_month['open_shipments'],
@@ -233,8 +265,9 @@ def main():
         # Display formatted table
         st.dataframe(display_df, use_container_width=True)
         
+       
         # Display subtitle with totals
-        st.markdown(f"Total non-received units from open shipments in {two_months_ago.strftime('%B')} and {last_month.strftime('%B')}: **{format_number(total_not_received)} units ({percentage_not_received:.1f}%)**")
+        st.markdown(f"Total non-received units from open shipments in {two_months_ago_start.strftime('%B')} and {last_month_start.strftime('%B')}: **{format_number(total_not_received)} units ({percentage_not_received:.1f}%)**")
         
         # Create Excel file
         buffer = io.BytesIO()
